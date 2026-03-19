@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <title>Hand Gesture 3D Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #three-canvas { width: 100vw; height: 100vh; display: block; }
+        
+        /* UI Teks di Tengah */
+        #gesture-display {
+            position: absolute;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00ffcc;
+            font-size: 32px;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(0,255,204,0.5);
+            pointer-events: none;
+            background: rgba(0,0,0,0.3);
+            padding: 10px 20px;
+            border-radius: 15px;
+        }
+
+        /* Preview Kamera Kecil */
+        #video-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 240px;
+            height: 180px;
+            overflow: hidden;
+            border: 3px solid #00ffcc;
+            border-radius: 12px;
+            transform: scaleX(-1); /* Mirroring */
+        }
+        video { width: 100%; height: 100%; object-fit: cover; }
+    </style>
+</head>
+<body>
+
+    <div id="gesture-display">Menunggu Kamera...</div>
+    <canvas id="three-canvas"></canvas>
+    
+    <div id="video-container">
+        <video id="input-video"></video>
+    </div>
+
+    <script>
+        // --- 1. INISIALISASI THREE.JS ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Tambahkan Pencahayaan
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(0x00ffcc, 1);
+        pointLight.position.set(5, 5, 5);
+        scene.add(pointLight);
+
+        // Objek 3D (Kubus sebagai placeholder)
+        const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ffcc, wireframe: false });
+        const cube = new THREE.Mesh(geometry, material);
+        scene.add(cube);
+
+        camera.position.z = 5;
+
+        // --- 2. LOGIKA DETEKSI GESTUR ---
+        function isFingerUp(landmarks, tipIdx, pipIdx) {
+            return landmarks[tipIdx].y < landmarks[pipIdx].y;
+        }
+
+        function analyzeGesture(landmarks) {
+            const indexUp = isFingerUp(landmarks, 8, 6);
+            const middleUp = isFingerUp(landmarks, 12, 10);
+            const ringUp = isFingerUp(landmarks, 16, 14);
+            const pinkyUp = isFingerUp(landmarks, 20, 18);
+            const thumbUp = landmarks[4].y < landmarks[3].y;
+
+            // Jarak jempol ke telunjuk (untuk Heart)
+            const distThumbIndex = Math.sqrt(
+                Math.pow(landmarks[4].x - landmarks[8].x, 2) + 
+                Math.pow(landmarks[4].y - landmarks[8].y, 2)
+            );
+
+            // LOGIKA SESUAI PERMINTAAN:
+            
+            // ✌️ Peace
+            if (indexUp && middleUp && !ringUp && !pinkyUp) return "Peace ✌️";
+            
+            // 🖐️ Hii (Semua tegak)
+            if (indexUp && middleUp && ringUp && pinkyUp && thumbUp) return "Hii 🖐️";
+            
+            // ☝️ Call me, fineshyt! (Hanya telunjuk)
+            if (indexUp && !middleUp && !ringUp && !pinkyUp) return "Call me, fineshyt! ☝️";
+            
+            // 🫰 ❤️ (Cubit tipis)
+            if (distThumbIndex < 0.05 && !middleUp && !ringUp) return "❤️ 🫰";
+            
+            // 🫷 Izinn (Telapak terbuka miring - simplifikasi: semua tegak tanpa jempol)
+            if (indexUp && middleUp && ringUp && pinkyUp && !thumbUp) return "Izinn 🫷";
+            
+            // 👍 From Diqrii to Jihann 🙌 (Hanya jempol)
+            if (!indexUp && !middleUp && !ringUp && !pinkyUp && thumbUp) return "From Diqrii to Jihann 🙌";
+
+            return "...";
+        }
+
+        // --- 3. INTEGRASI MEDIAPIPE ---
+        const videoElement = document.getElementById('input-video');
+        const display = document.getElementById('gesture-display');
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Gerakkan Kubus mengikuti telapak tangan (Landmark 0)
+                cube.position.x = (landmarks[9].x - 0.5) * -10; // Invert X untuk mirror
+                cube.position.y = (landmarks[9].y - 0.5) * -6;
+
+                // Deteksi Gestur
+                const gestureText = analyzeGesture(landmarks);
+                display.innerText = gestureText;
+
+                // Animasi berdasarkan gestur
+                if (gestureText.includes("Peace")) {
+                    cube.rotation.y += 0.2;
+                } else if (gestureText.includes("Hii")) {
+                    cube.scale.set(1.2, 1.2, 1.2);
+                } else if (gestureText.includes("Jihann")) {
+                    cube.rotation.x += 0.2;
+                } else {
+                    cube.scale.set(1, 1, 1);
+                    cube.rotation.y += 0.01;
+                }
+            } else {
+                display.innerText = "Tangan tidak terdeteksi";
+            }
+            renderer.render(scene, camera);
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        hands.onResults(onResults);
+
+        const cameraSetup = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+        cameraSetup.start();
+
+        // Responsive Window
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Loop render Three.js
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
