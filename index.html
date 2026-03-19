@@ -2,82 +2,158 @@
 <html lang="id">
 <head>
     <meta charset="utf-8">
-    <title>Hand Gesture 3D Control</title>
+    <title>Neon Particle Gesture Text</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        /* 3. Baground Hitam Polos */
+        body { margin: 0; overflow: hidden; background-color: #000000; font-family: 'Courier New', Courier, monospace; }
         #three-canvas { width: 100vw; height: 100vh; display: block; }
         
-        /* UI Teks di Tengah */
-        #gesture-display {
-            position: absolute;
-            top: 10%;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #00ffcc;
-            font-size: 32px;
-            font-weight: bold;
-            text-align: center;
-            text-shadow: 0 0 10px rgba(0,255,204,0.5);
-            pointer-events: none;
-            background: rgba(0,0,0,0.3);
-            padding: 10px 20px;
-            border-radius: 15px;
-        }
-
-        /* Preview Kamera Kecil */
+        /* Preview Kamera Kecil (Tetap ada untuk panduan pengguna) */
         #video-container {
             position: absolute;
             bottom: 20px;
             right: 20px;
-            width: 240px;
-            height: 180px;
+            width: 180px;
+            height: 135px;
             overflow: hidden;
-            border: 3px solid #00ffcc;
-            border-radius: 12px;
+            border: 2px solid #ff007f; /* Warna Neon Pink */
+            border-radius: 8px;
             transform: scaleX(-1); /* Mirroring */
+            opacity: 0.6;
         }
         video { width: 100%; height: 100%; object-fit: cover; }
     </style>
 </head>
 <body>
 
-    <div id="gesture-display">Menunggu Kamera...</div>
     <canvas id="three-canvas"></canvas>
-    
     <div id="video-container">
         <video id="input-video"></video>
     </div>
 
     <script>
+        // --- KONFIGURASI ---
+        const NEON_PINK = 0xff007f;
+        const NEON_WHITE = 0xffffff;
+        const PARTICLE_COUNT = 1500; // Jumlah partikel per kata
+
         // --- 1. INISIALISASI THREE.JS ---
         const scene = new THREE.Scene();
+        // 4. Kamera untuk efek mengambang
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.position.z = 15;
 
-        // Tambahkan Pencahayaan
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-        scene.add(ambientLight);
-        const pointLight = new THREE.PointLight(0x00ffcc, 1);
-        pointLight.position.set(5, 5, 5);
-        scene.add(pointLight);
+        // --- 2. SETUP TEKS PARTIKEL NEON ---
+        let currentParticleSystem = null;
+        let targetPositions = []; // Posisi tujuan untuk animasi menggabung
+        const fontLoader = new THREE.FontLoader();
+        let currentText = "Siap?";
 
-        // Objek 3D (Kubus sebagai placeholder)
-        const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
-        const material = new THREE.MeshPhongMaterial({ color: 0x00ffcc, wireframe: false });
-        const cube = new THREE.Mesh(geometry, material);
-        scene.add(cube);
+        // Memuat Font (Wajib pakai font JSON untuk Three.js)
+        fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+            createTextParticles(currentText, font);
+        });
 
-        camera.position.z = 5;
+        // Fungsi untuk membuat partikel membentuk kata
+        function createTextParticles(text, font) {
+            if (currentParticleSystem) scene.remove(currentParticleSystem);
 
-        // --- 2. LOGIKA DETEKSI GESTUR ---
+            // Buat bentuk teks
+            const shapes = font.generateShapes(text, 1);
+            const geometry = new THREE.ShapeGeometry(shapes);
+            geometry.computeBoundingBox();
+            
+            // Tengahkan teks
+            const xMid = -0.5 * (geometry.boundingBox.max.x - geometry.boundingBox.min.x);
+            const yMid = -0.5 * (geometry.boundingBox.max.y - geometry.boundingBox.min.y);
+            geometry.translate(xMid, yMid, 0);
+
+            // Ambil titik-titik dari bentuk teks
+            const points = geometry.getAttribute('position').array;
+            targetPositions = [];
+            for (let i = 0; i < points.length; i += 3) {
+                targetPositions.push(new THREE.Vector3(points[i], points[i+1], points[i+2]));
+            }
+
+            // --- 1. & 4. Setup Partikel & Neon ---
+            const particleGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(PARTICLE_COUNT * 3);
+            const colors = new Float32Array(PARTICLE_COUNT * 3);
+            const pColor = new THREE.Color(NEON_PINK);
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                // Posisi awal acak (efek menyebar sebelum menggabung)
+                positions[i * 3] = (Math.random() - 0.5) * 30;
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 20;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 10;
+
+                // Warna Pink-Putih Neon
+                const colorLerp = pColor.clone().lerp(new THREE.Color(NEON_WHITE), Math.random() * 0.3);
+                colors[i * 3] = colorLerp.r;
+                colors[i * 3 + 1] = colorLerp.g;
+                colors[i * 3 + 2] = colorLerp.b;
+            }
+
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            // Material Partikel (Efek Neon)
+            const particleMaterial = new THREE.PointsMaterial({
+                size: 0.15,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending, // Wajib untuk efek neon/glow
+                transparent: true,
+                depthWrite: false
+            });
+
+            currentParticleSystem = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(currentParticleSystem);
+            currentText = text;
+        }
+
+        // --- 5. ANIMASI SMOOTH & MENGGABUNG ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsedTime = clock.getElapsedTime();
+
+            if (currentParticleSystem) {
+                const positions = currentParticleSystem.geometry.attributes.position.array;
+                
+                for (let i = 0; i < PARTICLE_COUNT; i++) {
+                    // Ambil posisi target teks (looping jika jumlah partikel > titik teks)
+                    const target = targetPositions[i % targetPositions.length] || new THREE.Vector3(0,0,0);
+                    
+                    // LERP (Linear Interpolation) untuk animasi menggabung yang smooth
+                    positions[i * 3] += (target.x - positions[i * 3]) * 0.08;
+                    positions[i * 3 + 1] += (target.y - positions[i * 3 + 1]) * 0.08;
+                    positions[i * 3 + 2] += (target.z - positions[i * 3 + 2]) * 0.08;
+                }
+                currentParticleSystem.geometry.attributes.position.needsUpdate = true;
+
+                // 4. Efek Berputar & Mengambang
+                currentParticleSystem.rotation.y = elapsedTime * 0.3; // Berputar pelan
+                currentParticleSystem.position.y = Math.sin(elapsedTime) * 0.5; // Mengambang naik turun
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // --- 3. LOGIKA DETEKSI GESTUR ---
         function isFingerUp(landmarks, tipIdx, pipIdx) {
             return landmarks[tipIdx].y < landmarks[pipIdx].y;
         }
+
+        let currentGesture = "";
+        let gestureTimer = 0; // Menghindari pergantian teks terlalu cepat
 
         function analyzeGesture(landmarks) {
             const indexUp = isFingerUp(landmarks, 8, 6);
@@ -92,60 +168,38 @@
                 Math.pow(landmarks[4].y - landmarks[8].y, 2)
             );
 
-            // LOGIKA SESUAI PERMINTAAN:
-            
-            // ✌️ Peace
-            if (indexUp && middleUp && !ringUp && !pinkyUp) return "Peace ✌️";
-            
-            // 🖐️ Hii (Semua tegak)
-            if (indexUp && middleUp && ringUp && pinkyUp && thumbUp) return "Hii 🖐️";
-            
-            // ☝️ Call me, fineshyt! (Hanya telunjuk)
-            if (indexUp && !middleUp && !ringUp && !pinkyUp) return "Call me, fineshyt! ☝️";
-            
-            // 🫰 ❤️ (Cubit tipis)
-            if (distThumbIndex < 0.05 && !middleUp && !ringUp) return "❤️ 🫰";
-            
-            // 🫷 Izinn (Telapak terbuka miring - simplifikasi: semua tegak tanpa jempol)
-            if (indexUp && middleUp && ringUp && pinkyUp && !thumbUp) return "Izinn 🫷";
-            
-            // 👍 From Diqrii to Jihann 🙌 (Hanya jempol)
-            if (!indexUp && !middleUp && !ringUp && !pinkyUp && thumbUp) return "From Diqrii to Jihann 🙌";
+            let newGesture = "";
+            if (indexUp && middleUp && !ringUp && !pinkyUp) newGesture = "Peace";
+            else if (indexUp && middleUp && ringUp && pinkyUp && thumbUp) newGesture = "Hii!";
+            else if (indexUp && !middleUp && !ringUp && !pinkyUp) newGesture = "Call me, fineshyt";
+            else if (distThumbIndex < 0.05 && !middleUp && !ringUp) newGesture = "Love U";
+            else if (indexUp && middleUp && ringUp && pinkyUp && !thumbUp) newGesture = "Izinn";
+            else if (!indexUp && !middleUp && !ringUp && !pinkyUp && thumbUp) newGesture = "Diqrii <3 Jihann";
 
-            return "...";
+            // Hanya update jika gestur berubah dan stabil
+            if (newGesture !== "" && newGesture !== currentGesture && Date.now() - gestureTimer > 1000) {
+                currentGesture = newGesture;
+                gestureTimer = Date.now();
+                return newGesture;
+            }
+            return null;
         }
 
-        // --- 3. INTEGRASI MEDIAPIPE ---
+        // --- 4. INTEGRASI MEDIAPIPE ---
         const videoElement = document.getElementById('input-video');
-        const display = document.getElementById('gesture-display');
 
         function onResults(results) {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
+                const gesture = analyzeGesture(landmarks);
                 
-                // Gerakkan Kubus mengikuti telapak tangan (Landmark 0)
-                cube.position.x = (landmarks[9].x - 0.5) * -10; // Invert X untuk mirror
-                cube.position.y = (landmarks[9].y - 0.5) * -6;
-
-                // Deteksi Gestur
-                const gestureText = analyzeGesture(landmarks);
-                display.innerText = gestureText;
-
-                // Animasi berdasarkan gestur
-                if (gestureText.includes("Peace")) {
-                    cube.rotation.y += 0.2;
-                } else if (gestureText.includes("Hii")) {
-                    cube.scale.set(1.2, 1.2, 1.2);
-                } else if (gestureText.includes("Jihann")) {
-                    cube.rotation.x += 0.2;
-                } else {
-                    cube.scale.set(1, 1, 1);
-                    cube.rotation.y += 0.01;
+                // Jika gestur baru terdeteksi, buat kata baru dari partikel
+                if (gesture) {
+                    fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+                        createTextParticles(gesture, font);
+                    });
                 }
-            } else {
-                display.innerText = "Tangan tidak terdeteksi";
             }
-            renderer.render(scene, camera);
         }
 
         const hands = new Hands({
@@ -175,13 +229,6 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-
-        // Loop render Three.js
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-        animate();
     </script>
 </body>
 </html>
