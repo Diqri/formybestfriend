@@ -2,18 +2,13 @@
 <html lang="id">
 <head>
     <meta charset="utf-8">
-    <title>Neon Particle Ultra Smooth</title>
+    <title>Solid Neon Particles</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; }
-        canvas { display: block; }
-        #video-preview {
-            position: absolute; bottom: 20px; right: 20px; width: 150px;
-            border: 1px solid #ff007f; border-radius: 10px; transform: scaleX(-1);
-            opacity: 0.3;
-        }
+        body { margin: 0; background: #000; overflow: hidden; }
+        #video-preview { position: absolute; bottom: 10px; right: 10px; width: 120px; transform: scaleX(-1); opacity: 0.2; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -21,104 +16,96 @@
     <video id="video-preview" autoplay playsinline></video>
 
     <script>
-        // --- CONFIG ---
-        const PARTICLE_COUNT = 4000; 
-        const SMOOTHING = 0.08; // Kehalusan gerakan (0.01 - 0.1)
-
-        // --- THREE.JS SETUP ---
+        // --- 1. CORE SETUP ---
+        const PARTICLE_COUNT = 5000; 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
-        camera.position.z = 10;
+        camera.position.z = 12;
 
-        // Texture Bola Cahaya
-        const createTexture = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = 64; canvas.height = 64;
-            const ctx = canvas.getContext('2d');
-            const grad = ctx.createRadialGradient(32,32,0,32,32,32);
-            grad.addColorStop(0, 'rgba(255,255,255,1)');
-            grad.addColorStop(1, 'rgba(255,255,255,0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath(); ctx.arc(32,32,32,0,Math.PI*2); ctx.fill();
-            return new THREE.CanvasTexture(canvas);
+        // Tekstur Bulat Glow
+        const createTex = () => {
+            const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+            const ctx = c.getContext('2d');
+            const g = ctx.createRadialGradient(32,32,0,32,32,32);
+            g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g; ctx.fillRect(0,0,64,64);
+            return new THREE.CanvasTexture(c);
         };
 
-        // Particles System
+        // Particle System
         const geo = new THREE.BufferGeometry();
-        const positions = new Float32Array(PARTICLE_COUNT * 3);
-        const colors = new Float32Array(PARTICLE_COUNT * 3);
-        for(let i=0; i<PARTICLE_COUNT*3; i++) positions[i] = (Math.random()-0.5)*20;
+        const pos = new Float32Array(PARTICLE_COUNT * 3);
+        const cols = new Float32Array(PARTICLE_COUNT * 3);
+        for(let i=0; i<PARTICLE_COUNT*3; i++) pos[i] = (Math.random()-0.5)*30;
         
-        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+        
         const mat = new THREE.PointsMaterial({
-            size: 0.18, map: createTexture(), transparent: true, 
-            blending: THREE.AdditiveBlending, depthWrite: false, vertexColors: true
+            size: 0.12, map: createTex(), transparent: true, blending: THREE.AdditiveBlending, vertexColors: true, depthWrite: false
         });
         const points = new THREE.Points(geo, mat);
         scene.add(points);
 
-        // --- TEXT LOGIC ---
+        // --- 2. SOLID TEXT SAMPLING ---
         let targets = [];
         const loader = new THREE.FontLoader();
-        let myFont;
-        
+        let fontObj;
+
         loader.load('https://threejs.org/examples/fonts/helvetiker_bold.typeface.json', f => {
-            myFont = f;
+            fontObj = f;
             updateText("Ready?");
         });
 
         function updateText(txt) {
-            const shapes = myFont.generateShapes(txt, 1.5);
-            const textGeo = new THREE.ShapeGeometry(shapes, 6);
-            textGeo.computeBoundingBox();
-            const center = new THREE.Vector3();
-            textGeo.boundingBox.getCenter(center);
-            textGeo.translate(-center.x, -center.y, 0);
+            // Gunakan TextGeometry untuk mendapatkan volume (isi), bukan cuma outline
+            const textGeo = new THREE.TextGeometry(txt, {
+                font: fontObj, size: 1.8, height: 0.1, curveSegments: 12
+            });
+            textGeo.center();
 
-            // Ambil titik lebih rapat untuk kejelasan
-            const pts = textGeo.getAttribute('position').array;
+            // Ambil semua vertex dari seluruh permukaan huruf (bukan cuma garis)
+            const pts = textGeo.attributes.position.array;
             targets = [];
             for(let i=0; i<PARTICLE_COUNT; i++) {
-                const idx = (i % (pts.length/3)) * 3;
+                const idx = Math.floor(Math.random() * (pts.length/3)) * 3;
                 targets.push({ x: pts[idx], y: pts[idx+1], z: pts[idx+2] });
             }
         }
 
-        // --- ANIMATION LOOP ---
+        // --- 3. ANIMATION ---
         function animate() {
             requestAnimationFrame(animate);
-            const pos = geo.attributes.position.array;
-            const cols = geo.attributes.color ? geo.attributes.color.array : new Float32Array(PARTICLE_COUNT*3);
-            
+            const positions = geo.attributes.position.array;
+            const colors = geo.attributes.color.array;
+            const time = Date.now() * 0.002;
+
             for(let i=0; i<PARTICLE_COUNT; i++) {
                 const i3 = i*3;
                 if(targets[i]) {
-                    // Smooth easing
-                    pos[i3] += (targets[i].x - pos[i3]) * SMOOTHING;
-                    pos[i3+1] += (targets[i].y - pos[i3+1]) * SMOOTHING;
-                    pos[i3+2] += (targets[i].z - pos[i3+2]) * SMOOTHING;
-                    
-                    // Neon Color Pink-White
-                    const mix = Math.sin(Date.now()*0.002 + i)*0.5 + 0.5;
-                    cols[i3] = 1.0; // Red
-                    cols[i3+1] = 0.0 + (mix * 0.8); // Green
-                    cols[i3+2] = 0.5 + (mix * 0.5); // Blue
+                    // Pergerakan Super Smooth
+                    positions[i3] += (targets[i].x - positions[i3]) * 0.1;
+                    positions[i3+1] += (targets[i].y - positions[i3+1]) * 0.1;
+                    positions[i3+2] += (targets[i].z - positions[i3+2]) * 0.1;
+
+                    // Neon Pink-White Glow
+                    colors[i3] = 1.0; // R
+                    colors[i3+1] = 0.2 + Math.sin(time + i*0.1)*0.2; // G
+                    colors[i3+2] = 0.6 + Math.cos(time + i*0.1)*0.4; // B
                 }
             }
-            if(!geo.attributes.color) geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
             geo.attributes.position.needsUpdate = true;
             geo.attributes.color.needsUpdate = true;
-
-            points.rotation.y = Math.sin(Date.now()*0.0005)*0.2;
+            points.rotation.y = Math.sin(time*0.1)*0.15;
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- GESTURE & CAMERA ---
+        // --- 4. GESTURE & CAMERA ---
         const video = document.getElementById('input-video');
         const preview = document.getElementById('video-preview');
         let lastG = "";
@@ -144,10 +131,7 @@
         });
 
         const cam = new Camera(video, {
-            onFrame: async () => { 
-                await hands.send({image: video}); 
-                preview.srcObject = video.srcObject;
-            },
+            onFrame: async () => { await hands.send({image: video}); preview.srcObject = video.srcObject; },
             width: 640, height: 480
         });
         cam.start();
