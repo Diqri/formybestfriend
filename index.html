@@ -138,10 +138,11 @@
                 // SENSOR DETEKSI GESTUR
                 if(up(8,6) && up(12,10) && !up(16,14)) g = "Peace ";
                 else if(up(8,6) && up(12,10) && up(16,14) && lm[4].y < lm[3].y) g = "Hii jihann! ";
-                else if(up(8,6) && !up(12,10) && !up(16,14)) g = "sorry for making you feel bad tonight ";
+                else if(up(8,6) && !up(12,10) && !up(16,14)) g = 
+                "sorry for tonight ";
                 else if(d < 0.05 && !up(12,10)) g = "❤️ ";
                 else if(up(8,6) && up(12,10) && up(16,14) && lm[4].y > lm[3].y) g = "Izinn ";
-                else if(!up(8,6) && !up(12,10) && lm[4].y < lm[3].y) g = "Enjoy ur life";
+                else if(!up(8,6) && !up(12,10) && lm[4].y < lm[3].y) g = "Enjoy ur life ";
 
                 if(g && g !== lastGesture) { lastGesture = g; updateText(g); }
             }
