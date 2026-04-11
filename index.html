@@ -2,116 +2,132 @@
 <html lang="id">
 <head>
     <meta charset="utf-8">
-    <title>Solid Neon Particles</title>
+    <title>Starry Crystal Gesture v5.0</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; }
-        #video-preview { position: absolute; bottom: 10px; right: 10px; width: 120px; transform: scaleX(-1); opacity: 0.2; border-radius: 5px; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #video-preview { 
+            position: absolute; bottom: 20px; right: 20px; width: 140px; 
+            transform: scaleX(-1); border: 2px solid #ff007f; border-radius: 8px;
+            opacity: 0.2; z-index: 5; pointer-events: none;
+        }
     </style>
 </head>
 <body>
-    <video id="input-video" style="display:none"></video>
+    <video id="input-video" playsinline style="display:none"></video>
     <video id="video-preview" autoplay playsinline></video>
 
     <script>
-        // --- 1. CORE SETUP ---
-        const PARTICLE_COUNT = 5000; 
+        // --- KONFIGURASI ---
+        const STAR_COUNT = 3000; // Jumlah bintang
+        const TEXT_COLOR = 0xff007f; // Pink Neon
+
+        // --- 1. HD RENDERER SETUP ---
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        // Fog tipis untuk kedalaman bintang
+        scene.fog = new THREE.FogExp2(0x000000, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
-        camera.position.z = 12;
+        camera.position.set(0, 0, 25); // Posisi kamera lurus ke depan
 
-        // Tekstur Bulat Glow
-        const createTex = () => {
-            const c = document.createElement('canvas'); c.width = 64; c.height = 64;
-            const ctx = c.getContext('2d');
-            const g = ctx.createRadialGradient(32,32,0,32,32,32);
-            g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-            ctx.fillStyle = g; ctx.fillRect(0,0,64,64);
-            return new THREE.CanvasTexture(c);
-        };
+        // Pencahayaan
+        const ambientLight = new THREE.AmbientLight(0x202020, 1.2);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(0xffffff, 1, 50); // Cahaya putih untuk teks & bintang
+        pointLight.position.set(5, 5, 10);
+        scene.add(pointLight);
 
-        // Particle System
-        const geo = new THREE.BufferGeometry();
-        const pos = new Float32Array(PARTICLE_COUNT * 3);
-        const cols = new Float32Array(PARTICLE_COUNT * 3);
-        for(let i=0; i<PARTICLE_COUNT*3; i++) pos[i] = (Math.random()-0.5)*30;
-        
-        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-        
-        const mat = new THREE.PointsMaterial({
-            size: 0.12, map: createTex(), transparent: true, blending: THREE.AdditiveBlending, vertexColors: true, depthWrite: false
+        // --- 2. SISTEM BINTANG BERGERAK (STARFIELD) ---
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsPositions = new Float32Array(STAR_COUNT * 3);
+        const starsColors = new Float32Array(STAR_COUNT * 3);
+        const starsVelocities = new Float32Array(STAR_COUNT); // Kecepatan masing-masing bintang
+
+        for (let i = 0; i < STAR_COUNT; i++) {
+            // Posisi acak di dalam kubus besar (X, Y, Z)
+            starsPositions[i * 3] = (Math.random() - 0.5) * 100; // X
+            starsPositions[i * 3 + 1] = (Math.random() - 0.5) * 100; // Y
+            starsPositions[i * 3 + 2] = (Math.random() - 0.5) * 100; // Z
+
+            // Variasi Warna Bintang (Putih, Kebiruan, Pink tipis)
+            const r = 0.8 + Math.random() * 0.2; // Sedikit Red
+            const g = 0.8 + Math.random() * 0.2; // Sedikit Green
+            const b = 0.9 + Math.random() * 0.1; // Kebiruan dominan
+            
+            // Randomly make some stars slightly pink
+            if(Math.random() > 0.92) { // 8% pink
+                starsColors[i * 3] = 1.0; starsColors[i * 3 + 1] = 0.2; starsColors[i * 3 + 2] = 0.6;
+            } else {
+                starsColors[i * 3] = r; starsColors[i * 3 + 1] = g; starsColors[i * 3 + 2] = b;
+            }
+
+            // Kecepatan gerak bintang (Z-axis) acak
+            starsVelocities[i] = 0.05 + Math.random() * 0.15;
+        }
+
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(starsPositions, 3));
+        starsGeometry.setAttribute('color', new THREE.BufferAttribute(starsColors, 3));
+
+        // Material Bintang (Titik kecil berdenyut)
+        const starsMaterial = new THREE.PointsMaterial({
+            size: 0.15, 
+            vertexColors: true, 
+            transparent: true, 
+            blending: THREE.AdditiveBlending, // Agar cahaya partikel menumpuk terang
+            depthWrite: false, // Penting agar bintang di belakang teks tidak menimpa teks
+            sizeAttenuation: true // Bintang mengecil saat menjauh
         });
-        const points = new THREE.Points(geo, mat);
-        scene.add(points);
 
-        // --- 2. SOLID TEXT SAMPLING ---
-        let targets = [];
-        const loader = new THREE.FontLoader();
+        const starField = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(starField);
+
+        // --- 3. LOGIKA MESH TEXT PADAT ---
+        let currentTextMesh;
         let fontObj;
+        const loader = new THREE.FontLoader();
 
         loader.load('https://threejs.org/examples/fonts/helvetiker_bold.typeface.json', f => {
             fontObj = f;
             updateText("Ready?");
         });
 
+        const crystalMaterial = new THREE.MeshStandardMaterial({
+            color: TEXT_COLOR,
+            emissive: TEXT_COLOR,
+            emissiveIntensity: 0.4,
+            metalness: 1, 
+            roughness: 0.05,
+            curveSegments: 30
+        });
+
         function updateText(txt) {
-            // Gunakan TextGeometry untuk mendapatkan volume (isi), bukan cuma outline
+            if(!fontObj) return;
+            if (currentTextMesh) { scene.remove(currentTextMesh); currentTextMesh.geometry.dispose(); }
+
             const textGeo = new THREE.TextGeometry(txt, {
-                font: fontObj, size: 1.8, height: 0.1, curveSegments: 12
+                font: fontObj, size: 2.2, height: 0.6, curveSegments: 30,
+                bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 15
             });
             textGeo.center();
-
-            // Ambil semua vertex dari seluruh permukaan huruf (bukan cuma garis)
-            const pts = textGeo.attributes.position.array;
-            targets = [];
-            for(let i=0; i<PARTICLE_COUNT; i++) {
-                const idx = Math.floor(Math.random() * (pts.length/3)) * 3;
-                targets.push({ x: pts[idx], y: pts[idx+1], z: pts[idx+2] });
-            }
+            currentTextMesh = new THREE.Mesh(textGeo, crystalMaterial);
+            currentTextMesh.position.y = 0; // Tengahkan vertikal
+            scene.add(currentTextMesh);
         }
 
-        // --- 3. ANIMATION ---
-        function animate() {
-            requestAnimationFrame(animate);
-            const positions = geo.attributes.position.array;
-            const colors = geo.attributes.color.array;
-            const time = Date.now() * 0.002;
-
-            for(let i=0; i<PARTICLE_COUNT; i++) {
-                const i3 = i*3;
-                if(targets[i]) {
-                    // Pergerakan Super Smooth
-                    positions[i3] += (targets[i].x - positions[i3]) * 0.1;
-                    positions[i3+1] += (targets[i].y - positions[i3+1]) * 0.1;
-                    positions[i3+2] += (targets[i].z - positions[i3+2]) * 0.1;
-
-                    // Neon Pink-White Glow
-                    colors[i3] = 1.0; // R
-                    colors[i3+1] = 0.2 + Math.sin(time + i*0.1)*0.2; // G
-                    colors[i3+2] = 0.6 + Math.cos(time + i*0.1)*0.4; // B
-                }
-            }
-            geo.attributes.position.needsUpdate = true;
-            geo.attributes.color.needsUpdate = true;
-            points.rotation.y = Math.sin(time*0.1)*0.15;
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        // --- 4. GESTURE & CAMERA ---
+        // --- 4. DUAL-THREAD LOGIC (AI vs RENDER) ---
         const video = document.getElementById('input-video');
         const preview = document.getElementById('video-preview');
-        let lastG = "";
+        let lastGesture = "";
 
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-        hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.8 });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.8, minTrackingConfidence: 0.8 });
+        
         hands.onResults(res => {
             if(res.multiHandLandmarks && res.multiHandLandmarks[0]) {
                 const lm = res.multiHandLandmarks[0];
@@ -119,22 +135,73 @@
                 const d = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y);
 
                 let g = "";
-                if(up(8,6) && up(12,10) && !up(16,14)) g = "Peace";
-                else if(up(8,6) && up(12,10) && up(16,14) && lm[4].y < lm[3].y) g = "Hii!";
-                else if(up(8,6) && !up(12,10) && !up(16,14)) g = "Call me";
-                else if(d < 0.05) g = "Love U";
-                else if(up(8,6) && up(12,10) && up(16,14) && lm[4].y > lm[3].y) g = "Izin";
-                else if(!up(8,6) && !up(12,10) && lm[4].y < lm[3].y) g = "Diqrii <3 Jihann";
+                // SENSOR DETEKSI GESTUR
+                if(up(8,6) && up(12,10) && !up(16,14)) g = "Peace ";
+                else if(up(8,6) && up(12,10) && up(16,14) && lm[4].y < lm[3].y) g = "Hii! ";
+                else if(up(8,6) && !up(12,10) && !up(16,14)) g = "Call me, fineshyt! ";
+                else if(d < 0.05 && !up(12,10)) g = "❤️ 🫰";
+                else if(up(8,6) && up(12,10) && up(16,14) && lm[4].y > lm[3].y) g = "Izinn ";
+                else if(!up(8,6) && !up(12,10) && lm[4].y < lm[3].y) g = "Sipp ";
 
-                if(g && g !== lastG) { lastG = g; updateText(g); }
+                if(g && g !== lastGesture) { lastGesture = g; updateText(g); }
             }
         });
 
-        const cam = new Camera(video, {
-            onFrame: async () => { await hands.send({image: video}); preview.srcObject = video.srcObject; },
-            width: 640, height: 480
-        });
-        cam.start();
+        // Loop Render (Cinematic 60 FPS Super Smooth)
+        function renderLoop() {
+            const time = Date.now() * 0.001;
+
+            // --- ANIMASI BINTANG BERGERAK (STARFIELD) ---
+            const starsPositionsAttribute = starsGeometry.attributes.position;
+            
+            for (let i = 0; i < STAR_COUNT; i++) {
+                const zIndex = i * 3 + 2;
+                // Gerakkan bintang mendekati kamera (Z bertambah)
+                starsPositionsAttribute.array[zIndex] += starsVelocities[i];
+                
+                // Jika bintang melewati kamera (Z > 50), reset ke belakang (Z = -50)
+                if (starsPositionsAttribute.array[zIndex] > 50) {
+                    starsPositionsAttribute.array[zIndex] = -50;
+                    // Reset posisi X, Y secara acak agar menyebar
+                    starsPositionsAttribute.array[i * 3] = (Math.random() - 0.5) * 100; // X
+                    starsPositionsAttribute.array[i * 3 + 1] = (Math.random() - 0.5) * 100; // Y
+                }
+            }
+            starsPositionsAttribute.needsUpdate = true; // Wajib di-update
+
+            // Berdenyut Halus Ukuran Bintang (Berkedip)
+            starsMaterial.size = 0.15 + Math.sin(time * 4) * 0.03; // Berkedip natural
+
+            // --- ANIMASI TEKS MENGAMBANG ---
+            if (currentTextMesh) {
+                // Mengambang Super Halus
+                currentTextMesh.position.y = Math.sin(time * 1.5) * 0.6;
+                currentTextMesh.rotation.y = Math.sin(time * 0.5) * 0.1;
+                currentTextMesh.rotation.x = Math.sin(time * 0.3) * 0.03;
+                
+                // Denyut cahaya emissive teks sangat halus
+                crystalMaterial.emissiveIntensity = 0.4 + Math.sin(time * 3) * 0.08;
+            }
+            
+            renderer.render(scene, camera);
+            requestAnimationFrame(renderLoop);
+        }
+
+        // Loop Deteksi AI (Latar belakang)
+        async function aiLoop() {
+            if (video.readyState >= 2) { await hands.send({image: video}); }
+            setTimeout(aiLoop, 1000/30);
+        }
+
+        async function init() {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 640, height: 480, frameRate: { ideal: 30 } }
+            });
+            video.srcObject = stream; preview.srcObject = stream; video.play();
+            renderLoop(); aiLoop();
+        }
+
+        init().catch(e => console.error(e));
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
